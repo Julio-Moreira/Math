@@ -2,35 +2,89 @@
 
 namespace App\Entity;
 
-use App\Repository\FunctionCalculatorRepository;
-use Doctrine\DBAL\Types\Types;
-use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 
-#[ORM\Entity(repositoryClass: FunctionCalculatorRepository::class)]
 class FunctionCalculator
 {
-    #[ORM\Id, ORM\GeneratedValue, ORM\Column]
-    private ?int $id = null;
+    private array $stepByStep;
 
     public function __construct(
-        #[ORM\Column(type: Types::STRING, length: 32)]
         private string $law,
         private ExpressionLanguage $expressionLanguage,
-    ) { }
+    ) { 
+        $this->stepByStep = [];
+    }
 
     public function calculate(array $dom): array
     {
+        $this->addStep(["Init" => $this->law]);
         $img = array_map( 
-            fn($x) => $this->expressionLanguage
-                ->evaluate($this->hydrateLaw($x)),
+            fn($x) => $this->findAndResolveAllTypesOfFunction($x),
             $dom
         );
-        
+    
         return $img;
     }
 
-    private function hydrateLaw(int $x): string {
+    public function findAndResolveAllTypesOfFunction(int|string $x)
+    {
+        $tan = str_contains($this->law, "tan");
+        $cos = str_contains($this->law, "cos");
+        $sin = str_contains($this->law, "sin");
+
+        if (str_contains($this->law, "log")) {
+            $calculate = $this->expressionLanguage
+                ->evaluate($this->calculateLogarithm($x));
+
+            $this->addStep(['Calculate' => $calculate]);
+            return $calculate;
+        } elseif ($tan || $cos || $sin) {
+            $calculate = $this->calculateTrigonometric($x);
+            
+            $this->addStep(['Calculate' => $calculate]);
+            return $calculate;
+        } else {
+            $calculate = $this->expressionLanguage
+                ->evaluate($this->calculateOthersTypes($x));
+
+            $this->addStep(['Calculate' => $calculate]);
+            return $calculate;
+        }
+    }
+
+    private function calculateLogarithm(int $x): string
+    {
+        preg_match('/log\((.*), (.*)\)(.*)/', $this->law, $splittedLaw);
+
+        $logarithmically = str_replace('x', $x, $splittedLaw[1]); 
+        $log = log(
+            $this->expressionLanguage->evaluate($logarithmically), 
+            $this->expressionLanguage->evaluate($splittedLaw[2])
+        );
+
+        $this->addStep(['Substitute' => "log($logarithmically, $splittedLaw[2])"]);
+        $this->addStep(['Calculating Logarithm' => "$log"]);
+        
+        $finalString = "$log $splittedLaw[3]";
+        $this->addStep(["Join" => $finalString]);
+        return $finalString;
+    }
+
+    public function calculateTrigonometric(int|string $x): string 
+    {
+        preg_match('/(...)/', $this->law, $type);
+        $evaluatedX = $this->expressionLanguage->evaluate($x);
+        $calculateOperations = match ($type[1]) {
+            'tan' => tan($evaluatedX),
+            'cos' => cos($evaluatedX),
+            'sin' => sin($evaluatedX),
+        };
+
+        $this->addStep(['Calculating x' => "$x : $evaluatedX"]);
+        return (string) $calculateOperations;
+    }
+
+    private function calculateOthersTypes(int $x): string {
         $output = "";
 
         for ($i = 0; $i < strlen($this->law); $i++) {
@@ -42,16 +96,22 @@ class FunctionCalculator
                 : $currentChar;
         }
 
+        $this->addStep(['Substitute' => $output]);
         return $output;
     }
 
-    public function getId(): ?int
+    private function addStep(array $step): void
     {
-        return $this->id;
+        array_push($this->stepByStep, $step);
     }
 
     public function getLaw(): string
     {
         return $this->law;
+    }
+
+    public function getSteps(): array
+    {
+        return $this->stepByStep;
     }
 }

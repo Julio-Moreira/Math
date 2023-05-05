@@ -25,7 +25,8 @@ class MathController extends AbstractController
         return new JsonResponse([
             'law' => $functionCalculator->getLaw(),
             'dom' => $dom,
-            'image' => $image
+            'image' => $image,
+            'step by step' => $functionCalculator->getSteps()
         ], 200);
     }
 }

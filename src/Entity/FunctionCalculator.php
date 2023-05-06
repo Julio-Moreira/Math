@@ -6,24 +6,25 @@ use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 
 class FunctionCalculator
 {
-    private array $stepByStep;
+    private array $steps = [];
 
     public function __construct(
         private string $law,
         private ExpressionLanguage $expressionLanguage,
-    ) { 
-        $this->stepByStep = [];
-    }
+    ) { }
 
-    public function calculate(array $dom): array
+    public function calculate(array $domine): array
     {
-        $this->addStep(["Init" => $this->law]);
-        $img = array_map( 
+        $this->addStep([
+            "Init" => ['law' => $this->law, 'domine' => $domine]
+        ]);
+
+        $image = array_map( 
             fn($x) => $this->findAndResolveAllTypesOfFunction($x),
-            $dom
+            $domine
         );
     
-        return $img;
+        return $image;
     }
 
     public function findAndResolveAllTypesOfFunction(int|string $x)
@@ -54,20 +55,16 @@ class FunctionCalculator
 
     private function calculateLogarithm(int $x): string
     {
-        preg_match('/log\((.*), (.*)\)(.*)/', $this->law, $splittedLaw);
+        preg_match('/log\((.*), (.*)\)/', $this->law, $splittedLaw);
 
         $logarithmically = str_replace('x', $x, $splittedLaw[1]); 
-        $log = log(
-            $this->expressionLanguage->evaluate($logarithmically), 
-            $this->expressionLanguage->evaluate($splittedLaw[2])
-        );
+        $log = LogarithmCalculator::calculate(
+            $logarithmically, 
+            $splittedLaw[2], 
+            $this->expressionLanguage);
 
-        $this->addStep(['Substitute' => "log($logarithmically, $splittedLaw[2])"]);
-        $this->addStep(['Calculating Logarithm' => "$log"]);
-        
-        $finalString = "$log $splittedLaw[3]";
-        $this->addStep(["Join" => $finalString]);
-        return $finalString;
+        $this->addStep(['Substitute' => "log($logarithmically, $splittedLaw[2])"],);
+        return $log;
     }
 
     public function calculateTrigonometric(int|string $x): string 
@@ -85,24 +82,24 @@ class FunctionCalculator
     }
 
     private function calculateOthersTypes(int $x): string {
-        $output = "";
-
+        $newLaw = "";
         for ($i = 0; $i < strlen($this->law); $i++) {
             $currentChar = $this->law[$i];
             $prevChar = ($i > 0) ? $this->law[$i - 1] : "";
             
-            $output .= ($currentChar == "x") 
-                ? ((is_numeric($prevChar)) ? '*'.$x : "$x") 
+            $newLaw .= ($currentChar == "x") 
+                ? ( (is_numeric($prevChar)) ? "*$x" : "$x" ) 
                 : $currentChar;
         }
 
-        $this->addStep(['Substitute' => $output]);
-        return $output;
+        $this->addStep(['Substitute' => $newLaw]);
+        return $newLaw;
     }
 
-    private function addStep(array $step): void
+    private function addStep(array ...$steps): void
     {
-        array_push($this->stepByStep, $step);
+        foreach ($steps as $step)
+            array_push($this->steps, $step);
     }
 
     public function getLaw(): string
@@ -112,6 +109,6 @@ class FunctionCalculator
 
     public function getSteps(): array
     {
-        return $this->stepByStep;
+        return $this->steps;
     }
 }
